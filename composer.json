@@ -4,11 +4,11 @@
   "type": "library",
   "license": "GPL-2.0-or-later",
   "keywords": ["typo3", "typo3-cms", "workspace", "patch", "backend", "search"],
-  "homepage": "https://github.com/dirnbauer/typo3-workspace-overlay-patch",
+  "homepage": "https://github.com/webconsulting-at/typo3-workspace-overlay-patch",
   "authors": [
     {
-      "name": "Sven Dirnbauer",
-      "email": "dirnbauer@webconsulting.at",
+      "name": "webconsulting",
+      "email": "office@webconsulting.at",
       "homepage": "https://webconsulting.at"
     }
   ],
