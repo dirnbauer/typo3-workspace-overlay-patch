@@ -4,7 +4,7 @@
   "type": "library",
   "license": "GPL-2.0-or-later",
   "keywords": ["typo3", "typo3-cms", "workspace", "patch", "backend", "search"],
-  "homepage": "https://github.com/webconsulting-at/typo3-workspace-overlay-patch",
+  "homepage": "https://github.com/dirnbauer/typo3-workspace-overlay-patch",
   "authors": [
     {
       "name": "webconsulting",
