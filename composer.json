@@ -1,0 +1,31 @@
+{
+  "name": "webconsulting/typo3-workspace-overlay-patch",
+  "description": "Composer patch bundle for TYPO3 v14.3+ workspace query overlays. Lets backend search/list/suggest/slug see workspace-only field values, normalizes directly-selected workspace rows, and exposes a single TSconfig toggle.",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "keywords": ["typo3", "typo3-cms", "workspace", "patch", "backend", "search"],
+  "homepage": "https://github.com/dirnbauer/typo3-workspace-overlay-patch",
+  "authors": [
+    {
+      "name": "Sven Dirnbauer",
+      "email": "dirnbauer@webconsulting.at",
+      "homepage": "https://webconsulting.at"
+    }
+  ],
+  "require": {
+    "php": "^8.2",
+    "cweagans/composer-patches": "^2.0",
+    "typo3/cms-core": "^14.3",
+    "typo3/cms-backend": "^14.3"
+  },
+  "extra": {
+    "patches": {
+      "typo3/cms-backend": {
+        "Search and overlay workspace records consistently in backend field-filtered queries": "patches/typo3-cms-backend-workspace-query-overlay-search.patch"
+      },
+      "typo3/cms-core": {
+        "Add workspace-aware query helper and normalize directly selected workspace records": "patches/typo3-cms-core-workspace-query-overlay-api.patch"
+      }
+    }
+  }
+}

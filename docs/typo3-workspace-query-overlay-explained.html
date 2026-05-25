@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TYPO3 Workspace Query Overlay Patch Explained</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --paper: #ffffff;
+      --ink: #1b1f24;
+      --muted: #59636f;
+      --line: #d8dee6;
+      --accent: #005a9c;
+      --accent-soft: #e6f2fb;
+      --warn: #8a4b00;
+      --warn-soft: #fff3dc;
+      --ok: #126b3f;
+      --ok-soft: #e7f5ee;
+      --code: #f3f5f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    header {
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 38px 0 14px;
+      font-size: 1.55rem;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 24px 0 10px;
+      font-size: 1.12rem;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.1rem 0.28rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #101418;
+      color: #f4f7fb;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 12px 0 18px;
+      font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+      font-size: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef2f6;
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .lead {
+      color: var(--muted);
+      max-width: 900px;
+      font-size: 1.08rem;
+    }
+
+    .section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+
+    .warning {
+      border-left: 4px solid var(--warn);
+      background: var(--warn-soft);
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+
+    .success {
+      border-left: 4px solid var(--ok);
+      background: var(--ok-soft);
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfd;
+    }
+
+    .box h3 {
+      margin-top: 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfd;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.78rem;
+      font-weight: 650;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    .file {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-word;
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px 18px;
+      margin-top: 16px;
+      padding-left: 0;
+      list-style: none;
+    }
+
+    .toc a {
+      display: block;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      text-decoration: none;
+    }
+
+    @media (max-width: 640px) {
+      main {
+        padding: 28px 14px 48px;
+      }
+
+      .section {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>TYPO3 Workspace Query Overlay Patch Explained</h1>
+    <p class="lead">
+      This document explains the Composer patches added to this project for TYPO3 workspace queries.
+      It is written for PHP developers who know TYPO3 code, but do not want to reverse-engineer the
+      workspace overlay mechanism from the diff.
+    </p>
+    <p>
+      Project file: <code>docs/reports/typo3-workspace-query-overlay-explained.html</code>
+    </p>
+  </header>
+
+  <section class="section">
+    <h2>Table Of Contents</h2>
+    <ul class="toc">
+      <li><a href="#non-tech-summary">Non-Technical Summary</a></li>
+      <li><a href="#short-version">Short Version</a></li>
+      <li><a href="#workspace-basics">Workspace Basics</a></li>
+      <li><a href="#moving-twice">Moving A Record Twice</a></li>
+      <li><a href="#bug">The Actual Bug</a></li>
+      <li><a href="#generic-fix">The Generic Fix</a></li>
+      <li><a href="#the-gate">The Gate (Single On/Off Switch)</a></li>
+      <li><a href="#file-by-file">File By File</a></li>
+      <li><a href="#tests">Tests</a></li>
+      <li><a href="#composer-patches">Composer Patches</a></li>
+      <li><a href="#mental-model">Mental Model</a></li>
+    </ul>
+  </section>
+
+  <section class="section" id="non-tech-summary">
+    <h2>Non-Technical Summary</h2>
+    <p>
+      TYPO3 workspaces let editors prepare content changes without publishing them immediately. The live
+      website keeps showing the old content, while editors in the workspace should see and manage the draft
+      content.
+    </p>
+    <p>
+      The problem was that some backend views searched in the live content first and only applied the
+      workspace draft afterwards. If a title, page type, slug, or label existed only in the draft version,
+      TYPO3 could miss it or show the wrong row state.
+    </p>
+    <div class="note">
+      In simple terms: editors could create a correct draft, but parts of the backend could still search,
+      count, or display it as if the old live version was the only version.
+    </div>
+    <p>
+      This matters because workspace users need to trust the backend. Search results, record lists, icons,
+      slugs, and publish decisions must reflect the draft they are reviewing, not stale live data. Otherwise
+      editors can overlook changes, duplicate values, publish the wrong assumption, or waste time checking
+      whether TYPO3 or their content is wrong.
+    </p>
+    <p>
+      The patch makes those backend queries look at the relevant draft rows first and then normalize the
+      result so TYPO3 still behaves like one logical record. Normal live-mode behavior stays unchanged.
+    </p>
+  </section>
+
+  <section class="section" id="short-version">
+    <h2>Short Version</h2>
+    <p>
+      TYPO3 workspace overlay is a two-step process:
+    </p>
+    <div class="flow">
+      <div class="step">
+        <strong>1. Query records</strong>
+        TYPO3 fetches database rows with Doctrine QueryBuilder and restrictions.
+      </div>
+      <div class="step">
+        <strong>2. Overlay records</strong>
+        TYPO3 replaces live rows with workspace rows using <code>workspaceOL()</code> or <code>versionOL()</code>.
+      </div>
+    </div>
+    <p>
+      The bug happens when step 1 filters by a field that only has the new value in the workspace row.
+      The workspace row is excluded too early, so step 2 never gets a chance to overlay it.
+    </p>
+    <div class="success">
+      The patch lets selected backend queries fetch all workspace rows first, then overlay and reduce them
+      back to the expected live uid. This fixes search/list/suggest/slug cases without changing normal live queries.
+    </div>
+  </section>
+
+  <section class="section" id="workspace-basics">
+    <h2>Workspace Basics</h2>
+    <p>
+      Workspace versions live in the same table as live records. TYPO3 does not store drafts in a separate
+      table. Instead, the versioning fields decide what a row means.
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Field</th>
+        <th>Meaning</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>uid</code></td>
+        <td>The database row id. Workspace rows have their own uid.</td>
+      </tr>
+      <tr>
+        <td><code>t3ver_oid</code></td>
+        <td>For a workspace version of an existing record, this points to the live record uid.</td>
+      </tr>
+      <tr>
+        <td><code>t3ver_wsid</code></td>
+        <td>The workspace id. Live rows use <code>0</code>.</td>
+      </tr>
+      <tr>
+        <td><code>t3ver_state</code></td>
+        <td>Special workspace state: normal version, new placeholder, delete placeholder, move pointer.</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Example Data</h3>
+    <pre><code>-- Live row
+uid = 1
+t3ver_oid = 0
+t3ver_wsid = 0
+header = "Live title"
+
+-- Workspace row in workspace 1
+uid = 42
+t3ver_oid = 1
+t3ver_wsid = 1
+header = "Draft title"</code></pre>
+
+    <p>
+      After overlay, TYPO3 normally wants the result to behave like this:
+    </p>
+    <pre><code>uid = 1
+_ORIG_uid = 42
+header = "Draft title"</code></pre>
+
+    <p>
+      Preserving the live uid is important. TYPO3 references, links, permissions, and UI state often expect
+      the record identity to stay the live uid, while the field values come from the workspace row.
+    </p>
+  </section>
+
+  <section class="section" id="moving-twice">
+    <h2>Moving A Record Twice</h2>
+    <p>
+      Short answer for an existing live record in one workspace: TYPO3 normally creates only
+      <strong>one</strong> workspace row for that logical record. If the editor moves the record a second
+      time, TYPO3 updates the same workspace row. It does not create a second move-pointer row, and it
+      does not build a pointer chain.
+    </p>
+
+    <div class="success">
+      A move pointer is not a history entry for one move operation. It is the current workspace-position
+      marker for one live record. Its <code>t3ver_oid</code> stays the live record uid.
+    </div>
+
+    <h3>What TYPO3 Does</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>Action</th>
+        <th>What happens in the database</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>First move in a workspace</td>
+        <td>
+          TYPO3 creates or reuses one workspace row and marks it as
+          <code>t3ver_state = 4</code>. This row stores the draft location with its
+          <code>pid</code> and sorting fields.
+        </td>
+      </tr>
+      <tr>
+        <td>Second move of the same record in the same workspace</td>
+        <td>
+          TYPO3 updates the same workspace row. The <code>pid</code> and sorting fields change to the
+          latest target position.
+        </td>
+      </tr>
+      <tr>
+        <td>Pointer target</td>
+        <td>
+          <code>t3ver_oid</code> keeps pointing to the original live record uid, for example
+          <code>t3ver_oid = 89</code>.
+        </td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>What TYPO3 Does Not Do</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>Not done</th>
+        <th>Why it matters</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>No second move-pointer row for the same live record</td>
+        <td>The second move overwrites the draft position on the existing workspace row.</td>
+      </tr>
+      <tr>
+        <td>No pointer chain</td>
+        <td>
+          The second move does not create <code>second move -&gt; first move -&gt; live record</code>.
+          TYPO3 keeps <code>workspace row -&gt; live record</code>.
+        </td>
+      </tr>
+      <tr>
+        <td>No live move yet</td>
+        <td>
+          The live row is not moved while editing in the workspace. The move becomes live only when the
+          workspace change is published.
+        </td>
+      </tr>
+      <tr>
+        <td>No full move history in the record table</td>
+        <td>
+          The workspace row stores the latest draft position, not every intermediate position. Move history
+          can be logged elsewhere, but not as a chain of <code>t3ver_state = 4</code> rows.
+        </td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Existing Live Record Moved Once</h3>
+    <p>
+      Suppose the live page record is this:
+    </p>
+    <pre><code>uid = 89
+pid = 88
+t3ver_wsid = 0
+t3ver_oid = 0
+t3ver_state = 0
+title = "Relations"</code></pre>
+
+    <p>
+      In workspace 1, moving it creates one extra row:
+    </p>
+    <pre><code>uid = 92
+pid = 90                 -- target location in the workspace
+t3ver_wsid = 1
+t3ver_oid = 89           -- points to the live/original uid
+t3ver_state = 4          -- MOVE_POINTER
+title = "Relations"</code></pre>
+
+    <p>
+      The important part is <code>t3ver_oid = 89</code>. The workspace row is not the canonical identity.
+      It is a workspace overlay for live record <code>89</code>.
+    </p>
+
+    <h3>Same Record Moved Again</h3>
+    <p>
+      If the editor moves the same record again in the same workspace, TYPO3 does not create another row
+      like <code>uid = 93</code> pointing to <code>uid = 92</code>. Instead, it updates the existing row:
+    </p>
+    <pre><code>uid = 92
+pid = 1                  -- latest target location
+sorting = 128            -- latest sorting position
+t3ver_wsid = 1
+t3ver_oid = 89           -- still points to the live/original uid
+t3ver_state = 4          -- still MOVE_POINTER
+title = "Relations"</code></pre>
+
+    <p>
+      So the database shape is:
+    </p>
+    <pre><code>live row 89
+  ^
+  |
+workspace move pointer row 92</code></pre>
+
+    <p>
+      Not this:
+    </p>
+    <pre><code>live row 89 &lt;- first move row 92 &lt;- second move row 93</code></pre>
+
+    <h3>Why TYPO3 Reuses The Same Row</h3>
+    <p>
+      <code>DataHandler::moveRecord()</code> first checks whether the live record already has a workspace
+      overlay in the current workspace. The lookup is done by live uid:
+    </p>
+    <pre><code>BackendUtility::getWorkspaceVersionOfRecord($workspaceId, $table, $liveUid)</code></pre>
+
+    <p>
+      That lookup searches for a row where:
+    </p>
+    <pre><code>t3ver_wsid = current workspace
+AND t3ver_oid = live uid</code></pre>
+
+    <p>
+      If such a row exists, TYPO3 uses that row as the <code>$workspaceRecord</code>. Later in the move,
+      TYPO3 updates <code>pid</code> and sorting fields on that row:
+    </p>
+    <pre><code>UPDATE table
+SET pid = latest target pid,
+    sorting = latest sorting value
+WHERE uid = workspace row uid</code></pre>
+
+    <p>
+      If the existing workspace row was a normal changed row with <code>t3ver_state = 0</code>, moving it
+      turns that same row into <code>t3ver_state = 4</code>. If it was already a move pointer, it remains
+      a move pointer and only the position changes.
+    </p>
+
+    <h3>Workspace-New Records Are Different</h3>
+    <p>
+      A record created only inside a workspace has no live original yet. It uses:
+    </p>
+    <pre><code>t3ver_oid = 0
+t3ver_state = 1          -- NEW_PLACEHOLDER</code></pre>
+
+    <p>
+      If that workspace-new record is moved twice before publishing, TYPO3 still updates the same row.
+      It usually stays a new placeholder because there is no live uid for a move pointer to point to.
+    </p>
+
+    <h3>Translations And Child Records</h3>
+    <p>
+      Moving one default-language page can also move related localization rows or inline child records.
+      In that case you may see more than one workspace row in total, but each row belongs to its own
+      live record.
+    </p>
+    <pre><code>live default page 89
+  ^
+  |
+workspace move row 92, t3ver_oid = 89
+
+live translated page 91
+  ^
+  |
+workspace move row 93, t3ver_oid = 91</code></pre>
+
+    <p>
+      This is not a chain. It is one workspace row per affected live record.
+    </p>
+
+    <div class="warning">
+      If a table contains two move-pointer rows in the same workspace with the same
+      <code>t3ver_oid</code>, that is not the normal DataHandler result. It is a broken or manually
+      created state, and overlay code may return whichever matching row the database returns first.
+    </div>
+  </section>
+
+  <section class="section" id="bug">
+    <h2>The Actual Bug</h2>
+    <p>
+      The default <code>WorkspaceRestriction</code> is conservative. In a workspace it usually returns:
+    </p>
+    <pre><code>live rows
++ workspace-new rows
++ move pointers</code></pre>
+
+    <p>
+      It does not include normal changed workspace rows for existing records. That is fine when querying
+      by <code>uid</code> or <code>pid</code> and overlaying afterwards. It breaks when the SQL query filters
+      by a field that was changed only in the workspace.
+    </p>
+
+    <h3>Broken Search Example</h3>
+    <pre><code>WHERE header LIKE "%Draft title%"</code></pre>
+
+    <p>
+      The live row has <code>header = "Live title"</code>, so it does not match.
+      The workspace row has <code>header = "Draft title"</code>, but the default workspace restriction
+      excludes it because it is a normal version row with <code>t3ver_oid &gt; 0</code>.
+    </p>
+
+    <div class="warning">
+      Result: no row is returned. The overlay code is not wrong in this case. It simply never sees the row.
+    </div>
+
+    <h3>Relation To Forge Issue 109577</h3>
+    <p>
+      Forge issue 109577 fixed an ordering problem in the record list: overlay had to happen before creating
+      resolved record objects. This patch addresses the next layer of the same family of problems: the query
+      must not filter out the workspace row before overlay can run.
+    </p>
+  </section>
+
+  <section class="section" id="generic-fix">
+    <h2>The Generic Fix</h2>
+    <p>
+      The patch does three things.
+    </p>
+
+    <div class="grid">
+      <div class="box">
+        <h3>1. Better Query API</h3>
+        <p>
+          Adds <code>QueryBuilder::addWorkspaceRestriction()</code> so code can clearly say:
+        </p>
+        <pre><code>$queryBuilder-&gt;addWorkspaceRestriction(
+    $workspaceId,
+    $includeAllVersionedRecords
+);</code></pre>
+      </div>
+
+      <div class="box">
+        <h3>2. Central Decision Helper</h3>
+        <p>
+          Adds <code>WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()</code>.
+          This avoids every backend class inventing its own workspace switch logic.
+        </p>
+      </div>
+
+      <div class="box">
+        <h3>3. Overlay Direct Workspace Rows</h3>
+        <p>
+          Updates <code>workspaceOL()</code> and <code>versionOL()</code> so they also handle rows that
+          are already workspace rows, not only live rows.
+        </p>
+      </div>
+    </div>
+
+    <h3>The Switch</h3>
+    <p>
+      The include-all behavior is enabled only in backend workspace context. It can be disabled with User TSconfig:
+    </p>
+    <pre><code>options.workspaces.includeAllVersionedRecordsInQueries = 0</code></pre>
+
+    <p>
+      The helper returns <code>true</code> only when all of this is true:
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Condition</th>
+        <th>Why</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>EXT:workspaces</code> is loaded</td>
+        <td>No workspace logic when the extension is unavailable.</td>
+      </tr>
+      <tr>
+        <td><code>$GLOBALS['BE_USER']</code> exists</td>
+        <td>This is backend behavior, not a generic frontend default.</td>
+      </tr>
+      <tr>
+        <td>Backend user workspace is not <code>0</code></td>
+        <td>Live workspace must keep the old fast path.</td>
+      </tr>
+      <tr>
+        <td>TSconfig does not disable it</td>
+        <td>Site owners can turn it off if they hit a performance or compatibility problem.</td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section" id="the-gate">
+    <h2>The Gate (Single On/Off Switch)</h2>
+    <p>
+      "The gate" is one static helper method, called from every patched location in the exact same
+      <code>if</code> form:
+    </p>
+    <pre><code>if (\TYPO3\CMS\Core\Database\Query\Restriction\WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()) {
+    // ... patched behavior
+}</code></pre>
+
+    <p>
+      Defined in <code>vendor/typo3/cms-core/Classes/Database/Query/Restriction/WorkspaceRestriction.php</code>,
+      it returns <code>true</code> only when <strong>all four</strong> conditions hold:
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>#</th>
+        <th>Condition</th>
+        <th>Returns <code>false</code> when</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>1</td>
+        <td><code>EXT:workspaces</code> is loaded</td>
+        <td>The workspaces extension is missing.</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>$GLOBALS['BE_USER']</code> is a real <code>BackendUserAuthentication</code></td>
+        <td>No backend session (frontend, CLI, anonymous).</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Backend user workspace is not <code>0</code></td>
+        <td>The user is currently in the live workspace.</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>TSconfig <code>options.workspaces.includeAllVersionedRecordsInQueries</code> is not <code>0</code> (defaults to <code>1</code>)</td>
+        <td>The site or user has explicitly disabled the patch.</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Where The Gate Is Used</h3>
+    <p>
+      Seven call sites, one helper, one TSconfig key. The gate now wraps both halves of the patch
+      (queries <em>and</em> overlays):
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Half</th>
+        <th>File</th>
+        <th>What it gates</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td rowspan="5">Query (broaden search results)</td>
+        <td><code>typo3/cms-backend/Classes/RecordList/DatabaseRecordList.php</code></td>
+        <td>Record-list search restriction (only when <code>searchString !== ''</code>).</td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-backend/Classes/Search/LiveSearch/DatabaseRecordProvider.php</code></td>
+        <td>Live-search record restriction.</td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-backend/Classes/Search/LiveSearch/PageRecordProvider.php</code></td>
+        <td>Live-search page restriction.</td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-backend/Classes/Form/Wizard/SuggestWizardDefaultReceiver.php</code></td>
+        <td>Suggest-wizard restriction.</td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-core/Classes/DataHandling/SlugHelper.php</code></td>
+        <td>Slug-uniqueness restriction.</td>
+      </tr>
+      <tr>
+        <td rowspan="2">Overlay (normalize direct workspace rows)</td>
+        <td><code>typo3/cms-backend/Classes/Utility/BackendUtility.php</code></td>
+        <td><code>workspaceOL()</code> uid-normalization block.</td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-core/Classes/Domain/Repository/PageRepository.php</code></td>
+        <td><code>versionOL()</code> uid-normalization block.</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Why It Matters: Full On/Off Toggle</h3>
+    <p>
+      Earlier the gate covered only the five query call sites. The two overlay normalizers always ran,
+      so disabling the TSconfig left the patch half-active: a workspace row that reached
+      <code>workspaceOL()</code>/<code>versionOL()</code> by any path still had its uid normalized to the
+      live oid. That mismatched the search side and could surface a normalized live uid for a
+      soft-deleted live row, which then crashed callers like
+      <code>ElementInformationController</code>.
+    </p>
+    <p>
+      Wrapping the overlay normalizers in the same gate makes the patch a single binary:
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th><code>options.workspaces.includeAllVersionedRecordsInQueries</code></th>
+        <th>Search broadens?</th>
+        <th>Overlay normalizes direct workspace rows?</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>1</code> or unset (default)</td>
+        <td>yes</td>
+        <td>yes</td>
+      </tr>
+      <tr>
+        <td><code>0</code></td>
+        <td>no (vanilla <code>WorkspaceRestriction</code>)</td>
+        <td>no (falls through to original core logic)</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Live Verification</h3>
+    <p>
+      The toggle was confirmed end-to-end against a real workspace row
+      (<code>tt_content/12701</code>, a workspace VERSION whose live <code>uid=12485</code> was soft-deleted):
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Call</th>
+        <th>Switch ON</th>
+        <th>Switch OFF</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>getRecordWSOL('tt_content', 12701)</code></td>
+        <td><code>uid=12485, _ORIG_uid=12701</code> (normalized)</td>
+        <td><code>uid=12701, _ORIG_uid=-</code> (untouched)</td>
+      </tr>
+      <tr>
+        <td><code>getRecordWSOL('pages', 705)</code> (move pointer)</td>
+        <td><code>uid=686, _ORIG_uid=705</code> (normalized)</td>
+        <td><code>uid=705, _ORIG_uid=-</code> (untouched)</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>How To Flip It</h3>
+    <p>
+      <strong>Sitewide</strong> via page TSconfig (e.g. <code>Configuration/page.tsconfig</code> in a sitepackage):
+    </p>
+    <pre><code>options.workspaces.includeAllVersionedRecordsInQueries = 0</code></pre>
+    <p>
+      <strong>Per user or group</strong> via the TSconfig field in the BE user/group module.
+    </p>
+    <div class="note">
+      Because the gate also requires <code>$GLOBALS['BE_USER']</code> and a non-live workspace, the patch is
+      automatically dormant for anonymous frontend requests, CLI commands, and admins working in the live
+      workspace. There is no separate frontend kill-switch needed.
+    </div>
+  </section>
+
+  <section class="section" id="file-by-file">
+    <h2>File By File</h2>
+
+    <h3><span class="tag">core</span><span class="file">Classes/Database/Query/QueryBuilder.php</span></h3>
+    <p>
+      Adds a small developer-experience helper:
+    </p>
+    <pre><code>public function addWorkspaceRestriction(
+    int $workspaceId,
+    bool $includeAllVersionedRecords = false
+): self {
+    $this-&gt;restrictionContainer
+        -&gt;removeByType(WorkspaceRestriction::class)
+        -&gt;add(GeneralUtility::makeInstance(
+            WorkspaceRestriction::class,
+            $workspaceId,
+            $includeAllVersionedRecords
+        ));
+
+    return $this;
+}</code></pre>
+    <p>
+      Before this, callers had to manually remove/add restrictions. The helper makes the intent readable
+      and reduces copy-paste bugs.
+    </p>
+
+    <h3><span class="tag">core</span><span class="file">Classes/Database/Query/Restriction/WorkspaceRestriction.php</span></h3>
+    <p>
+      Adds the central backend decision helper:
+    </p>
+    <pre><code>WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()</code></pre>
+    <p>
+      This does not change the SQL by itself. It only answers the question:
+      "Should this backend query include all version rows and reduce after overlay?"
+    </p>
+
+    <h3><span class="tag">core</span><span class="file">Classes/Domain/Repository/PageRepository.php</span></h3>
+    <p>
+      <code>PageRepository::versionOL()</code> used to assume that the incoming row was usually a live row.
+      With include-all queries, the incoming row can already be a workspace row.
+    </p>
+    <p>
+      The patch adds an early normalization block, wrapped in the central gate so the whole patch can be
+      turned off with one TSconfig key. Defensive casts and null-coalesce keep it safe when the optional
+      version fields are missing from the incoming row:
+    </p>
+    <pre><code>if (WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()) {
+    $workspaceId = (int)$this-&gt;context-&gt;getPropertyFromAspect('workspace', 'id');
+    $rowVersionState = VersionState::tryFrom($row['t3ver_state'] ?? 0);
+    if ((int)($row['t3ver_wsid'] ?? 0) === $workspaceId) {
+        if ($rowVersionState === VersionState::DELETE_PLACEHOLDER) {
+            $row = false;
+            return;
+        }
+        if ((int)($row['t3ver_oid'] ?? 0) &gt; 0) {
+            // For MOVE_POINTER also fill _ORIG_pid from the live row (omitted for brevity).
+            $row['_ORIG_uid'] = $row['uid'];
+            $row['uid'] = $row['t3ver_oid'];
+            return;
+        }
+    }
+}</code></pre>
+    <p>
+      In plain words: if we already have the draft row, keep its field values but make it look like the
+      live uid again. The same outer <code>t3ver_wsid</code> branch also handles delete placeholders by
+      removing the row from the result entirely. When the gate is off, the block is skipped and core
+      falls through to its original logic.
+    </p>
+
+    <h3><span class="tag">core</span><span class="file">Classes/DataHandling/SlugHelper.php</span></h3>
+    <p>
+      Slug uniqueness is part of create/update behavior. If a draft page already uses
+      <code>/workspace-only-slug</code>, TYPO3 must not allow another record in the same workspace to
+      accidentally reuse it.
+    </p>
+    <p>
+      The patch changes SlugHelper to use:
+    </p>
+    <pre><code>$queryBuilder-&gt;addWorkspaceRestriction(
+    $this-&gt;workspaceId,
+    WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
+);</code></pre>
+    <p>
+      SlugHelper already had overlay/reduce logic after fetching. The missing part was fetching the
+      draft row in the first place.
+    </p>
+
+    <h3><span class="tag">backend</span><span class="file">Classes/Utility/BackendUtility.php</span></h3>
+    <p>
+      <code>BackendUtility::workspaceOL()</code> gets the same direct-workspace-row normalization as
+      <code>PageRepository::versionOL()</code>, wrapped in the same gate:
+    </p>
+    <pre><code>if (WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()) {
+    $versionState = VersionState::tryFrom($row['t3ver_state'] ?? 0);
+    if ((int)($row['t3ver_wsid'] ?? 0) === $wsid) {
+        // DELETE_PLACEHOLDER -&gt; $row = false
+        // t3ver_oid &gt; 0      -&gt; $row['uid'] = $row['t3ver_oid']; $row['_ORIG_uid'] = old uid
+    }
+}</code></pre>
+    <p>
+      This matters for backend modules like record list, suggest wizard, live search, recycler, and info
+      views because many of them call <code>BackendUtility::workspaceOL()</code> after the query. Disabling
+      the TSconfig key turns this normalization off in lockstep with the search broadening, so the patch
+      cannot end up half-active.
+    </p>
+
+    <h3><span class="tag">backend</span><span class="file">Classes/RecordList/DatabaseRecordList.php</span></h3>
+    <p>
+      This is the main visible fix for "Records view search".
+    </p>
+    <p>
+      The patch:
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Change</th>
+        <th>Reason</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>Uses include-all workspace rows only when <code>$this-&gt;searchString !== ''</code>.</td>
+        <td>Normal list views keep the faster old behavior.</td>
+      </tr>
+      <tr>
+        <td>Counts distinct live ids with a <code>CASE WHEN t3ver_oid &gt; 0</code> expression.</td>
+        <td>Live row and draft row should count as one logical record.</td>
+      </tr>
+      <tr>
+        <td>Deduplicates rows after overlay by <code>$record-&gt;getUid()</code>.</td>
+        <td>Include-all queries can return live and workspace rows for the same logical record.</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3><span class="tag">backend</span><span class="file">LiveSearch providers</span></h3>
+    <p>
+      These files are patched:
+    </p>
+    <ul>
+      <li><code>Classes/Search/LiveSearch/DatabaseRecordProvider.php</code></li>
+      <li><code>Classes/Search/LiveSearch/PageRecordProvider.php</code></li>
+    </ul>
+    <p>
+      Live search already used include-all in one place. The patch keeps the behavior in workspace context,
+      but routes it through the central switch so it can be disabled consistently.
+    </p>
+
+    <h3><span class="tag">backend</span><span class="file">Classes/Form/Wizard/SuggestWizardDefaultReceiver.php</span></h3>
+    <p>
+      Suggest wizard searches by labels and configured fields. Those are editable fields, so they can have
+      draft-only values. The patch makes the suggest query use the same include-all rule.
+    </p>
+  </section>
+
+  <section class="section" id="tests">
+    <h2>Tests</h2>
+    <p>
+      The patch adds focused functional tests. They are not broad UI tests; they prove the exact failure mode.
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Test</th>
+        <th>What It Proves</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>queryBuilderCanAddWorkspaceRestrictionDirectly()</code></td>
+        <td>The new QueryBuilder API generates the same SQL as manually adding <code>WorkspaceRestriction(..., true)</code>.</td>
+      </tr>
+      <tr>
+        <td><code>workspaceOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction()</code></td>
+        <td><code>BackendUtility::workspaceOL()</code> can receive a direct workspace row and normalize it.</td>
+      </tr>
+      <tr>
+        <td><code>versionOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction()</code></td>
+        <td><code>PageRepository::versionOL()</code> can do the same in frontend/domain repository context.</td>
+      </tr>
+      <tr>
+        <td><code>searchFindsWorkspaceVersionWhenSearchValueOnlyExistsInWorkspaceRow()</code></td>
+        <td>Record list search finds a draft value that does not exist in the live row.</td>
+      </tr>
+      <tr>
+        <td><code>buildSlugForUniqueInTableConsidersWorkspaceOnlySlugValues()</code></td>
+        <td>Slug uniqueness sees a slug value that exists only in the workspace row.</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>Verification Status</h3>
+    <div class="success">
+      <strong>Static verification — passed.</strong> Both patches are listed in
+      <code>composer.json</code>, their hashes match <code>patches.lock.json</code>, and all nine
+      production-file edits are present in <code>vendor/typo3/cms-core/</code> and
+      <code>vendor/typo3/cms-backend/</code>. The five test methods listed above also exist in
+      <code>vendor/typo3/cms-*/Tests/Functional/</code> after patching.
+    </div>
+    <div class="success">
+      <strong>Live test execution — passed (5 tests, 10 assertions).</strong>
+      Executed in DDEV with PHP 8.3.30, PHPUnit 11.5.55, MariaDB 10.11 on 2026-05-25.
+      Per-test result:
+    </div>
+    <table>
+      <thead>
+      <tr>
+        <th>Test method</th>
+        <th>Result</th>
+        <th>Assertions</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>queryBuilderCanAddWorkspaceRestrictionDirectly</code></td>
+        <td>PASS</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td><code>workspaceOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction</code></td>
+        <td>PASS</td>
+        <td>3</td>
+      </tr>
+      <tr>
+        <td><code>versionOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction</code></td>
+        <td>PASS</td>
+        <td>3</td>
+      </tr>
+      <tr>
+        <td><code>searchFindsWorkspaceVersionWhenSearchValueOnlyExistsInWorkspaceRow</code></td>
+        <td>PASS</td>
+        <td>2</td>
+      </tr>
+      <tr>
+        <td><code>buildSlugForUniqueInTableConsidersWorkspaceOnlySlugValues</code></td>
+        <td>PASS</td>
+        <td>1</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>How To Reproduce</h3>
+    <p>
+      Two one-time setup steps were required before the suite would run inside this distribution.
+      Both are recorded so anyone can reproduce the live run:
+    </p>
+    <ol>
+      <li>
+        <strong>Project-level test scaffolding.</strong> A copy of TYPO3's functional-test
+        configuration lives at <code>Build/FunctionalTests.xml</code> and
+        <code>Build/FunctionalTestsBootstrap.php</code>. The bootstrap does two extra things on top
+        of the vanilla testing-framework boilerplate:
+        <ul>
+          <li>
+            Defines the <code>TYPO3</code> constant before package discovery so that any
+            extension's <code>ext_emconf.php</code> with a top-level
+            <code>defined('TYPO3') or die();</code> guard (this project has two such files in
+            <code>vendor/webconsulting/*</code>) does not silently kill the bootstrap when
+            <code>ComposerPackageManager::getExtEmConf()</code> includes it.
+          </li>
+          <li>
+            Registers a small PSR-4 autoloader that maps
+            <code>TYPO3\CMS\&lt;Ext&gt;\Tests\&hellip;</code> to
+            <code>vendor/typo3/cms-&lt;ext&gt;/Tests/&hellip;</code>, because the vendor packages
+            ship their test trees outside the published composer autoload.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <strong>Database grant.</strong> The testing-framework creates a fresh per-test database
+        named <code>db_*</code>. The DDEV default user <code>db</code> only has access to
+        <code>db</code>, so a one-shot grant is needed:
+        <pre><code>ddev exec mysql -uroot -proot -e "GRANT ALL ON \`db_%\`.* TO 'db'@'%'; FLUSH PRIVILEGES;"</code></pre>
+      </li>
+    </ol>
+    <p>
+      With that in place, the five-test suite is reproducible from the project root:
+    </p>
+    <pre><code>ddev exec env typo3DatabaseDriver=pdo_mysql typo3DatabaseHost=db \
+    typo3DatabaseName=db typo3DatabaseUsername=db typo3DatabasePassword=db \
+    vendor/bin/phpunit -c Build/FunctionalTests.xml \
+    --filter queryBuilderCanAddWorkspaceRestrictionDirectly</code></pre>
+    <p>
+      Substitute the other four method names from the table above to run each test on its own. The
+      whole suite takes roughly ten seconds on this machine.
+    </p>
+  </section>
+
+  <section class="section" id="composer-patches">
+    <h2>Composer Patches</h2>
+    <p>
+      The project uses <code>cweagans/composer-patches</code>. The real changes are stored as patch files
+      so they can be reapplied after <code>composer install</code>.
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>Package</th>
+        <th>Patch File</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td><code>typo3/cms-core</code></td>
+        <td><code>patches/typo3-cms-core-workspace-query-overlay-api.patch</code></td>
+      </tr>
+      <tr>
+        <td><code>typo3/cms-backend</code></td>
+        <td><code>patches/typo3-cms-backend-workspace-query-overlay-search.patch</code></td>
+      </tr>
+      </tbody>
+    </table>
+    <p>
+      The root <code>composer.json</code> contains the patch entries. <code>patches.lock.json</code>
+      stores the calculated patch hashes. That means Composer can verify that the patch files did not
+      silently change.
+    </p>
+  </section>
+
+  <section class="section" id="mental-model">
+    <h2>Mental Model</h2>
+    <p>
+      The safe rule for TYPO3 workspace-aware queries is:
+    </p>
+    <div class="note">
+      If a query filters by fields that editors can change in a workspace, the query probably needs to
+      include all workspace rows and then overlay/reduce afterwards.
+    </div>
+
+    <h3>Use Default Restriction When</h3>
+    <ul>
+      <li>You query by stable identifiers like <code>uid</code> or simple page position.</li>
+      <li>You do not search/filter by editable record fields.</li>
+      <li>You need the fastest normal list/tree path.</li>
+    </ul>
+
+    <h3>Use Include-All Restriction When</h3>
+    <ul>
+      <li>You search by title, header, slug, description, label, or other editable fields.</li>
+      <li>You already call <code>workspaceOL()</code>, <code>versionOL()</code>, or another reduce step after fetching.</li>
+      <li>You can deduplicate by live uid after overlay.</li>
+    </ul>
+
+    <h3>Practical PHP Pattern</h3>
+    <pre><code>$queryBuilder = $connectionPool-&gt;getQueryBuilderForTable($table);
+$queryBuilder-&gt;getRestrictions()
+    -&gt;removeAll()
+    -&gt;add(GeneralUtility::makeInstance(DeletedRestriction::class));
+
+$queryBuilder-&gt;addWorkspaceRestriction(
+    $backendUser-&gt;workspace,
+    WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
+);
+
+// Build WHERE on editable fields here.
+// Fetch rows.
+// Then call workspaceOL/versionOL and deduplicate by live uid.</code></pre>
+  </section>
+</main>
+</body>
+</html>

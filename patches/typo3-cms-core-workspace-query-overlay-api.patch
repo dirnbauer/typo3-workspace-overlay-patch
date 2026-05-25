@@ -1,0 +1,275 @@
+diff --git a/Classes/DataHandling/SlugHelper.php b/Classes/DataHandling/SlugHelper.php
+index 10da836cf..4524639bd 100644
+--- a/Classes/DataHandling/SlugHelper.php
++++ b/Classes/DataHandling/SlugHelper.php
+@@ -433,8 +433,9 @@ class SlugHelper
+             return;
+         }
+ 
+-        $queryBuilder->getRestrictions()->add(
+-            GeneralUtility::makeInstance(WorkspaceRestriction::class, $this->workspaceId)
++        $queryBuilder->addWorkspaceRestriction(
++            $this->workspaceId,
++            WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
+         );
+ 
+         // Exclude the online record of a versioned record
+diff --git a/Classes/Database/Query/QueryBuilder.php b/Classes/Database/Query/QueryBuilder.php
+index 63f3a714a..e7dfaa0ac 100644
+--- a/Classes/Database/Query/QueryBuilder.php
++++ b/Classes/Database/Query/QueryBuilder.php
+@@ -42,6 +42,7 @@ use TYPO3\CMS\Core\Database\Query\Restriction\DefaultRestrictionContainer;
+ use TYPO3\CMS\Core\Database\Query\Restriction\LimitToTablesRestrictionContainer;
+ use TYPO3\CMS\Core\Database\Query\Restriction\QueryRestrictionContainerInterface;
+ use TYPO3\CMS\Core\Database\Query\Restriction\QueryRestrictionInterface;
++use TYPO3\CMS\Core\Database\Query\Restriction\WorkspaceRestriction;
+ use TYPO3\CMS\Core\Database\RelationHandler;
+ use TYPO3\CMS\Core\Utility\GeneralUtility;
+ use TYPO3\CMS\Core\Utility\MathUtility;
+@@ -129,6 +130,20 @@ class QueryBuilder extends ConcreteQueryBuilder
+         return $this->restrictionContainer;
+     }
+ 
++    /**
++     * Replaces an existing workspace restriction with one for the given workspace.
++     *
++     * Use $includeAllVersionedRecords for queries that filter on mutable record fields
++     * and perform workspace overlay/reduce after fetching the rows.
++     */
++    public function addWorkspaceRestriction(int $workspaceId, bool $includeAllVersionedRecords = false): self
++    {
++        $this->restrictionContainer
++            ->removeByType(WorkspaceRestriction::class)
++            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $workspaceId, $includeAllVersionedRecords));
++        return $this;
++    }
++
+     public function setRestrictions(QueryRestrictionContainerInterface $restrictionContainer): void
+     {
+         foreach ($this->additionalRestrictions as $restrictionClass => $options) {
+diff --git a/Classes/Database/Query/Restriction/WorkspaceRestriction.php b/Classes/Database/Query/Restriction/WorkspaceRestriction.php
+index c2b2162f2..e8e5bcdab 100644
+--- a/Classes/Database/Query/Restriction/WorkspaceRestriction.php
++++ b/Classes/Database/Query/Restriction/WorkspaceRestriction.php
+@@ -17,9 +17,11 @@ declare(strict_types=1);
+ 
+ namespace TYPO3\CMS\Core\Database\Query\Restriction;
+ 
++use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+ use TYPO3\CMS\Core\Database\Query\Expression\CompositeExpression;
+ use TYPO3\CMS\Core\Database\Query\Expression\ExpressionBuilder;
+ use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
++use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
+ use TYPO3\CMS\Core\Utility\GeneralUtility;
+ use TYPO3\CMS\Core\Versioning\VersionState;
+ 
+@@ -59,6 +61,25 @@ class WorkspaceRestriction implements QueryRestrictionInterface
+         $this->tcaSchemaFactory = GeneralUtility::makeInstance(TcaSchemaFactory::class);
+     }
+ 
++    /**
++     * Returns whether backend queries that filter on editable record fields should include all
++     * versioned rows from the current workspace and let workspace overlay reduce the result set.
++     *
++     * User TSconfig:
++     * options.workspaces.includeAllVersionedRecordsInQueries = 0
++     */
++    public static function shouldIncludeAllVersionedRecordsForBackendQuery(): bool
++    {
++        if (!ExtensionManagementUtility::isLoaded('workspaces')) {
++            return false;
++        }
++        $backendUser = $GLOBALS['BE_USER'] ?? null;
++        if (!$backendUser instanceof BackendUserAuthentication || (int)$backendUser->workspace === 0) {
++            return false;
++        }
++        return (bool)($backendUser->getTSConfig()['options.']['workspaces.']['includeAllVersionedRecordsInQueries'] ?? true);
++    }
++
+     /**
+      * Main method to build expressions for given tables
+      *
+diff --git a/Classes/Domain/Repository/PageRepository.php b/Classes/Domain/Repository/PageRepository.php
+index a7d2716cf..fab52a56d 100644
+--- a/Classes/Domain/Repository/PageRepository.php
++++ b/Classes/Domain/Repository/PageRepository.php
+@@ -1726,6 +1726,36 @@ class PageRepository implements LoggerAwareInterface
+         // sure no additional fields are selected. This is best for eg. getPageOverlay()
+         // Computed properties are excluded since those would lead to SQL errors.
+         $fields = array_keys($this->purgeComputedProperties($row));
++        if (WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()) {
++            $workspaceId = (int)$this->context->getPropertyFromAspect('workspace', 'id');
++            $rowVersionState = VersionState::tryFrom($row['t3ver_state'] ?? 0);
++            if ((int)($row['t3ver_wsid'] ?? 0) === $workspaceId) {
++                if ($rowVersionState === VersionState::DELETE_PLACEHOLDER) {
++                    $row = false;
++                    return;
++                }
++                if ((int)($row['t3ver_oid'] ?? 0) > 0) {
++                    if ($rowVersionState === VersionState::MOVE_POINTER && array_key_exists('pid', $row) && !array_key_exists('_ORIG_pid', $row)) {
++                        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
++                        $queryBuilder->getRestrictions()
++                            ->removeAll()
++                            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
++                        $liveRecord = $queryBuilder
++                            ->select('pid')
++                            ->from($table)
++                            ->where($queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter((int)$row['t3ver_oid'], Connection::PARAM_INT)))
++                            ->executeQuery()
++                            ->fetchAssociative();
++                        if (is_array($liveRecord)) {
++                            $row['_ORIG_pid'] = $liveRecord['pid'];
++                        }
++                    }
++                    $row['_ORIG_uid'] = $row['uid'];
++                    $row['uid'] = $row['t3ver_oid'];
++                    return;
++                }
++            }
++        }
+         // will overlay any incoming moved record with the live record, which in turn
+         // will be overlaid with its workspace version again to fetch both PID fields.
+         $incomingRecordIsAMoveVersion = (int)$row['t3ver_oid'] > 0 && VersionState::tryFrom($row['t3ver_state'] ?? 0) === VersionState::MOVE_POINTER;
+diff --git a/Tests/Functional/DataHandling/Slug/SlugHelperUniqueTest.php b/Tests/Functional/DataHandling/Slug/SlugHelperUniqueTest.php
+index d4c4455aa..9d8409e08 100644
+--- a/Tests/Functional/DataHandling/Slug/SlugHelperUniqueTest.php
++++ b/Tests/Functional/DataHandling/Slug/SlugHelperUniqueTest.php
+@@ -18,6 +18,7 @@ declare(strict_types=1);
+ namespace TYPO3\CMS\Core\Tests\Functional\DataHandling\Slug;
+ 
+ use PHPUnit\Framework\Attributes\Test;
++use TYPO3\CMS\Core\Database\ConnectionPool;
+ use TYPO3\CMS\Core\DataHandling\Model\RecordStateFactory;
+ use TYPO3\CMS\Core\DataHandling\SlugHelper;
+ use TYPO3\CMS\Core\Tests\Functional\SiteHandling\SiteBasedTestTrait;
+@@ -31,6 +32,8 @@ final class SlugHelperUniqueTest extends FunctionalTestCase
+         'EN' => ['id' => 0, 'title' => 'English', 'locale' => 'en_US.UTF8'],
+     ];
+ 
++    protected array $coreExtensionsToLoad = ['workspaces'];
++
+     protected function setUp(): void
+     {
+         parent::setUp();
+@@ -113,4 +116,58 @@ final class SlugHelperUniqueTest extends FunctionalTestCase
+         $variablePartOfSlug = end($parts);
+         self::assertSame(32, strlen($variablePartOfSlug));
+     }
++
++    #[Test]
++    public function buildSlugForUniqueInTableConsidersWorkspaceOnlySlugValues(): void
++    {
++        $connection = $this->get(ConnectionPool::class)->getConnectionForTable('pages');
++        $connection->insert('pages', [
++            'uid' => 9101,
++            'pid' => 1,
++            'deleted' => 0,
++            'sys_language_uid' => 0,
++            'l10n_parent' => 0,
++            'l10n_source' => 0,
++            'title' => 'Live slug source',
++            'slug' => '/live-slug-source',
++            't3ver_oid' => 0,
++            't3ver_wsid' => 0,
++            't3ver_state' => 0,
++            't3ver_stage' => 0,
++        ]);
++        $connection->insert('pages', [
++            'uid' => 9102,
++            'pid' => 1,
++            'deleted' => 0,
++            'sys_language_uid' => 0,
++            'l10n_parent' => 0,
++            'l10n_source' => 0,
++            'title' => 'Draft slug source',
++            'slug' => '/workspace-only-slug',
++            't3ver_oid' => 9101,
++            't3ver_wsid' => 1,
++            't3ver_state' => 0,
++            't3ver_stage' => 0,
++        ]);
++        $backendUser = $this->setUpBackendUser(1);
++        $backendUser->workspace = 1;
++        $GLOBALS['BE_USER'] = $backendUser;
++
++        $subject = new SlugHelper(
++            'pages',
++            'slug',
++            [
++                'generatorOptions' => [
++                    'fields' => ['title'],
++                    'prefixParentPageSlug' => true,
++                ],
++            ],
++            1
++        );
++        $state = RecordStateFactory::forName('pages')->fromArray(['uid' => 'NEW102', 'pid' => 1]);
++
++        $resultSlug = $subject->buildSlugForUniqueInTable('/workspace-only-slug', $state);
++
++        self::assertSame('/workspace-only-slug-1', $resultSlug);
++    }
+ }
+diff --git a/Tests/Functional/Database/Query/Restriction/WorkspaceRestrictionTest.php b/Tests/Functional/Database/Query/Restriction/WorkspaceRestrictionTest.php
+index 0a483703f..c99f3c5b4 100644
+--- a/Tests/Functional/Database/Query/Restriction/WorkspaceRestrictionTest.php
++++ b/Tests/Functional/Database/Query/Restriction/WorkspaceRestrictionTest.php
+@@ -116,6 +116,25 @@ final class WorkspaceRestrictionTest extends FunctionalTestCase
+         self::assertSame('SELECT * FROM aTable WHERE ((aTable.t3ver_wsid IN (0, 42)) AND (aTable.t3ver_state <> 2))', $createdSql);
+     }
+ 
++    #[Test]
++    public function queryBuilderCanAddWorkspaceRestrictionDirectly(): void
++    {
++        $this->get(TcaSchemaFactory::class)->rebuild(array_replace_recursive($GLOBALS['TCA'], [
++            'aTable' => [
++                'ctrl' => [
++                    'versioningWS' => true,
++                ],
++            ],
++        ]));
++        $queryBuilder = $this->get(ConnectionPool::class)->getQueryBuilderForTable('aTable');
++        $queryBuilder->getRestrictions()->removeAll();
++        $queryBuilder->addWorkspaceRestriction(42, true);
++        $queryBuilder->select('*')->from('aTable');
++        $createdSql = $queryBuilder->getSQL();
++        $createdSql = str_replace(['`', '"'], '', $createdSql);
++        self::assertSame('SELECT * FROM aTable WHERE ((aTable.t3ver_wsid IN (0, 42)) AND (aTable.t3ver_state <> 2))', $createdSql);
++    }
++
+     #[Test]
+     public function buildExpressionQueriesAllVersionedRecordsWithinLiveStillRemovesDeletedState(): void
+     {
+diff --git a/Tests/Functional/Domain/Repository/PageRepositoryTest.php b/Tests/Functional/Domain/Repository/PageRepositoryTest.php
+index 97ea4bf91..6de3b9e9c 100644
+--- a/Tests/Functional/Domain/Repository/PageRepositoryTest.php
++++ b/Tests/Functional/Domain/Repository/PageRepositoryTest.php
+@@ -577,6 +577,28 @@ final class PageRepositoryTest extends FunctionalTestCase
+         self::assertSame($originalInput, $input);
+     }
+ 
++    #[Test]
++    public function versionOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction(): void
++    {
++        $context = new Context();
++        $context->setAspect('workspace', new WorkspaceAspect(4));
++        $subject = new PageRepository($context);
++        $row = [
++            'uid' => 42,
++            'pid' => 1,
++            'title' => 'Draft title',
++            't3ver_oid' => 1,
++            't3ver_wsid' => 4,
++            't3ver_state' => 0,
++        ];
++
++        $subject->versionOL('pages', $row);
++
++        self::assertSame(1, $row['uid']);
++        self::assertSame(42, $row['_ORIG_uid']);
++        self::assertSame('Draft title', $row['title']);
++    }
++
+     #[Test]
+     public function modifyDefaultConstraintsForDatabaseQueryEventIsCalled(): void
+     {

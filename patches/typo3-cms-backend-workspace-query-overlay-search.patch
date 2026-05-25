@@ -1,0 +1,285 @@
+diff --git a/Classes/Form/Wizard/SuggestWizardDefaultReceiver.php b/Classes/Form/Wizard/SuggestWizardDefaultReceiver.php
+index 27747a8c0..4878736cb 100644
+--- a/Classes/Form/Wizard/SuggestWizardDefaultReceiver.php
++++ b/Classes/Form/Wizard/SuggestWizardDefaultReceiver.php
+@@ -88,8 +88,11 @@ class SuggestWizardDefaultReceiver
+         $this->queryBuilder = $this->getQueryBuilderForTable($table);
+         $this->queryBuilder->getRestrictions()
+             ->removeAll()
+-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class))
+-            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $this->getBackendUser()->workspace));
++            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
++        $this->queryBuilder->addWorkspaceRestriction(
++            $this->getBackendUser()->workspace,
++            WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
++        );
+         $this->table = $table;
+         $this->tcaSchema = GeneralUtility::makeInstance(TcaSchemaFactory::class)->get($this->table);
+         $this->config = $config;
+diff --git a/Classes/RecordList/DatabaseRecordList.php b/Classes/RecordList/DatabaseRecordList.php
+index 734cd0754..52fb1f0a9 100644
+--- a/Classes/RecordList/DatabaseRecordList.php
++++ b/Classes/RecordList/DatabaseRecordList.php
+@@ -634,9 +634,19 @@ class DatabaseRecordList
+     {
+         // Finding the total amount of records on the page
+         $queryBuilderTotalItems = $this->getQueryBuilder($table, ['*'], false, 0, 1);
++        $queryBuilderTotalItems->resetOrderBy();
++        if ($this->shouldIncludeAllWorkspaceVersionedRecords($table)) {
++            $liveRecordIdExpression = sprintf(
++                'CASE WHEN %s > 0 THEN %s ELSE %s END',
++                $queryBuilderTotalItems->quoteIdentifier($table . '.t3ver_oid'),
++                $queryBuilderTotalItems->quoteIdentifier($table . '.t3ver_oid'),
++                $queryBuilderTotalItems->quoteIdentifier($table . '.uid')
++            );
++            $queryBuilderTotalItems->selectLiteral('COUNT(DISTINCT ' . $liveRecordIdExpression . ')');
++        } else {
++            $queryBuilderTotalItems->count('*');
++        }
+         $totalItems = (int)$queryBuilderTotalItems
+-            ->count('*')
+-            ->resetOrderBy()
+             ->executeQuery()
+             ->fetchOne();
+         if ($totalItems === 0) {
+@@ -790,16 +800,20 @@ class DatabaseRecordList
+                     continue;
+                 }
+ 
+-                $accRows[] = $record;
+-                $currentIdList[] = $record->getUid();
++                $recordUid = $record->getUid();
++                if (isset($accRows[$recordUid])) {
++                    continue;
++                }
++                $accRows[$recordUid] = $record;
++                $currentIdList[] = $recordUid;
+                 if ($allowManualSorting) {
+                     if ($prevUid) {
+-                        $this->currentTable['prev'][$record->getUid()] = $prevPrevUid;
+-                        $this->currentTable['next'][$prevUid] = -$record->getUid();
+-                        $this->currentTable['prevUid'][$record->getUid()] = $prevUid;
++                        $this->currentTable['prev'][$recordUid] = $prevPrevUid;
++                        $this->currentTable['next'][$prevUid] = -$recordUid;
++                        $this->currentTable['prevUid'][$recordUid] = $prevUid;
+                     }
+-                    $prevPrevUid = isset($this->currentTable['prev'][$record->getUid()]) ? -$prevUid : $record->getPid();
+-                    $prevUid = $record->getUid();
++                    $prevPrevUid = isset($this->currentTable['prev'][$recordUid]) ? -$prevUid : $record->getPid();
++                    $prevUid = $recordUid;
+                 }
+             }
+             // Render items:
+@@ -2563,6 +2577,13 @@ class DatabaseRecordList
+         return array_keys($orderedTableNames);
+     }
+ 
++    private function shouldIncludeAllWorkspaceVersionedRecords(string $table): bool
++    {
++        return $this->searchString !== ''
++            && $this->tcaSchemaFactory->get($table)->isWorkspaceAware()
++            && WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery();
++    }
++
+     /**
+      * Returns a QueryBuilder configured to select $fields from $table where the pid is restricted
+      * depending on the current searchlevel setting.
+@@ -2581,8 +2602,11 @@ class DatabaseRecordList
+             ->getQueryBuilderForTable($table);
+         $queryBuilder->getRestrictions()
+             ->removeAll()
+-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class))
+-            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $this->getBackendUserAuthentication()->workspace));
++            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
++        $queryBuilder->addWorkspaceRestriction(
++            $this->getBackendUserAuthentication()->workspace,
++            $this->shouldIncludeAllWorkspaceVersionedRecords($table)
++        );
+         $queryBuilder
+             ->select(...$fields)
+             ->from($table);
+diff --git a/Classes/Search/LiveSearch/DatabaseRecordProvider.php b/Classes/Search/LiveSearch/DatabaseRecordProvider.php
+index b96c502b2..bf4e65222 100644
+--- a/Classes/Search/LiveSearch/DatabaseRecordProvider.php
++++ b/Classes/Search/LiveSearch/DatabaseRecordProvider.php
+@@ -195,8 +195,11 @@ final class DatabaseRecordProvider implements SearchProviderInterface
+         $queryBuilder = $this->connectionPool->getQueryBuilderForTable($tableName);
+         $queryBuilder->getRestrictions()
+             ->removeAll()
+-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class))
+-            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $this->getBackendUser()->workspace, true));
++            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
++        $queryBuilder->addWorkspaceRestriction(
++            $this->getBackendUser()->workspace,
++            WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
++        );
+ 
+         $constraints = $this->buildConstraintsForTable($searchDemand->getQuery(), $queryBuilder, $tableName);
+         $event = $this->eventDispatcher->dispatch(new ModifyConstraintsForLiveSearchEvent($constraints, $tableName, $searchDemand));
+diff --git a/Classes/Search/LiveSearch/PageRecordProvider.php b/Classes/Search/LiveSearch/PageRecordProvider.php
+index 8b5da7ab5..921b4e757 100644
+--- a/Classes/Search/LiveSearch/PageRecordProvider.php
++++ b/Classes/Search/LiveSearch/PageRecordProvider.php
+@@ -141,8 +141,11 @@ final class PageRecordProvider implements SearchProviderInterface
+         $queryBuilder = $this->connectionPool->getQueryBuilderForTable('pages');
+         $queryBuilder->getRestrictions()
+             ->removeAll()
+-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class))
+-            ->add(GeneralUtility::makeInstance(WorkspaceRestriction::class, $this->getBackendUser()->workspace, true));
++            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
++        $queryBuilder->addWorkspaceRestriction(
++            $this->getBackendUser()->workspace,
++            WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()
++        );
+ 
+         $constraints = $this->buildConstraintsForTable($searchDemand->getQuery(), $queryBuilder);
+         $event = $this->eventDispatcher->dispatch(new ModifyConstraintsForLiveSearchEvent($constraints, 'pages', $searchDemand));
+diff --git a/Classes/Utility/BackendUtility.php b/Classes/Utility/BackendUtility.php
+index b2c99c72f..291840d11 100644
+--- a/Classes/Utility/BackendUtility.php
++++ b/Classes/Utility/BackendUtility.php
+@@ -2667,6 +2667,27 @@ class BackendUtility
+             return;
+         }
+
++        if (WorkspaceRestriction::shouldIncludeAllVersionedRecordsForBackendQuery()) {
++            $versionState = VersionState::tryFrom($row['t3ver_state'] ?? 0);
++            if ((int)($row['t3ver_wsid'] ?? 0) === $wsid) {
++                if ($versionState === VersionState::DELETE_PLACEHOLDER) {
++                    $row = false;
++                    return;
++                }
++                if ((int)($row['t3ver_oid'] ?? 0) > 0) {
++                    if ($versionState === VersionState::MOVE_POINTER && array_key_exists('pid', $row) && !array_key_exists('_ORIG_pid', $row)) {
++                        $liveRecord = self::getRecord($table, (int)$row['t3ver_oid'], 'pid');
++                        if (is_array($liveRecord)) {
++                            $row['_ORIG_pid'] = $liveRecord['pid'];
++                        }
++                    }
++                    $row['_ORIG_uid'] = $row['uid'];
++                    $row['uid'] = $row['t3ver_oid'];
++                    return;
++                }
++            }
++        }
++
+         // Check if input record is a moved record
+         $incomingRecordIsAMoveVersion = false;
+         if (isset($row['t3ver_oid'])
+diff --git a/Tests/Functional/RecordList/DatabaseRecordListTest.php b/Tests/Functional/RecordList/DatabaseRecordListTest.php
+index 919bce727..938d57936 100644
+--- a/Tests/Functional/RecordList/DatabaseRecordListTest.php
++++ b/Tests/Functional/RecordList/DatabaseRecordListTest.php
+@@ -26,6 +26,7 @@ use TYPO3\CMS\Backend\RecordList\DatabaseRecordList;
+ use TYPO3\CMS\Backend\RecordList\Event\AfterRecordListRowPreparedEvent;
+ use TYPO3\CMS\Backend\Routing\Route;
+ use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
++use TYPO3\CMS\Core\Database\ConnectionPool;
+ use TYPO3\CMS\Core\Domain\RawRecord;
+ use TYPO3\CMS\Core\Domain\Record\ComputedProperties;
+ use TYPO3\CMS\Core\EventDispatcher\EventDispatcher;
+@@ -262,6 +263,65 @@ final class DatabaseRecordListTest extends FunctionalTestCase
+         self::assertStringNotContainsString('FR-CA: Content Element #1', $listHtml);
+     }
+ 
++    #[Test]
++    public function searchFindsWorkspaceVersionWhenSearchValueOnlyExistsInWorkspaceRow(): void
++    {
++        $connection = $this->get(ConnectionPool::class)->getConnectionForTable('tt_content');
++        $connection->insert('tt_content', [
++            'uid' => 9101,
++            'pid' => 1100,
++            'CType' => 'text',
++            'header' => 'Live workspace search source',
++            'bodytext' => '',
++            'sys_language_uid' => 0,
++            'l18n_parent' => 0,
++            'l10n_source' => 0,
++            'colPos' => 0,
++            'sorting' => 9101,
++            'hidden' => 0,
++            'deleted' => 0,
++            't3ver_oid' => 0,
++            't3ver_wsid' => 0,
++            't3ver_state' => 0,
++            't3ver_stage' => 0,
++        ]);
++        $connection->insert('tt_content', [
++            'uid' => 9102,
++            'pid' => 1100,
++            'CType' => 'text',
++            'header' => 'Draft-only workspace search needle',
++            'bodytext' => '',
++            'sys_language_uid' => 0,
++            'l18n_parent' => 0,
++            'l10n_source' => 0,
++            'colPos' => 0,
++            'sorting' => 9101,
++            'hidden' => 0,
++            'deleted' => 0,
++            't3ver_oid' => 9101,
++            't3ver_wsid' => 1,
++            't3ver_state' => 0,
++            't3ver_stage' => 0,
++        ]);
++        $this->backendUser->workspace = 1;
++        $GLOBALS['BE_USER'] = $this->backendUser;
++
++        $request = (new ServerRequest('http://localhost/'))
++            ->withAttribute('route', (new Route('/typo3/module/content/records', ['_identifier' => 'records'])))
++            ->withAttribute('site', $this->get(SiteFinder::class)->getSiteByIdentifier('test'));
++        $pageContext = $this->get(PageContextFactory::class)->createWithLanguages($request, 1100, [0], $this->backendUser);
++        $request = $request->withAttribute('pageContext', $pageContext);
++
++        $recordList = $this->get(DatabaseRecordList::class);
++        $recordList->setRequest($request);
++        $recordList->start(1100, 'tt_content', 0, 'Draft-only workspace search needle');
++
++        $listHtml = $recordList->generateList();
++
++        self::assertStringContainsString('Draft-only workspace search needle', $listHtml);
++        self::assertStringNotContainsString('Live workspace search source', $listHtml);
++    }
++
+     #[Test]
+     public function localizationPanelDoesNotOfferLanguageWithoutPageTranslation(): void
+     {
+diff --git a/Tests/Functional/Utility/BackendUtilityTest.php b/Tests/Functional/Utility/BackendUtilityTest.php
+index 3595b2e3a..10b7246c7 100644
+--- a/Tests/Functional/Utility/BackendUtilityTest.php
++++ b/Tests/Functional/Utility/BackendUtilityTest.php
+@@ -38,6 +38,8 @@ final class BackendUtilityTest extends FunctionalTestCase
+ {
+     use SiteBasedTestTrait;
+ 
++    protected array $coreExtensionsToLoad = ['workspaces'];
++
+     protected const LANGUAGE_PRESETS = [
+         'EN' => ['id' => 0, 'title' => 'English', 'locale' => 'en_US.UTF8'],
+         'DA' => ['id' => 1, 'title' => 'Dansk', 'locale' => 'da_DK.UTF8'],
+@@ -607,6 +609,25 @@ final class BackendUtilityTest extends FunctionalTestCase
+         self::assertSame($expected, $row);
+     }
+ 
++    #[Test]
++    public function workspaceOLNormalizesWorkspaceVersionRowsSelectedByIncludeAllWorkspaceRestriction(): void
++    {
++        $row = [
++            'uid' => 42,
++            'pid' => 1,
++            'header' => 'Draft title',
++            't3ver_oid' => 1,
++            't3ver_wsid' => 1,
++            't3ver_state' => 0,
++        ];
++
++        BackendUtility::workspaceOL('tt_content', $row, 1);
++
++        self::assertSame(1, $row['uid']);
++        self::assertSame(42, $row['_ORIG_uid']);
++        self::assertSame('Draft title', $row['header']);
++    }
++
+     #[Test]
+     public function getAllowedFieldsForTableReturnsUniqueList(): void
+     {
